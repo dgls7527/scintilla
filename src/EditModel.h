@@ -55,6 +55,7 @@ class EditModel {
 public:
 	bool inOverstrike;
 	int xOffset;		///< Horizontal scrolled amount in pixels
+	int col;			///< Number of columns
 	bool trackLineWidth;
 
 	std::unique_ptr<SpecialRepresentations> reprs;

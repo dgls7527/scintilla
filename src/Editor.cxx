@@ -319,7 +319,7 @@ Sci::Line Editor::MaxScrollPos() const {
 	//LinesTotal(), LinesOnScreen(), LinesTotal() - LinesOnScreen() + 1);
 	Sci::Line retVal = pcs->LinesDisplayed();
 	if (endAtLastLine) {
-		retVal -= LinesOnScreen();
+		retVal -= LinesOnScreen() * col;
 	} else {
 		retVal--;
 	}
@@ -346,7 +346,32 @@ Point Editor::LocationFromPosition(SelectionPosition pos, PointEnd pe) {
 	const PRectangle rcClient = GetTextRectangle();
 	RefreshStyleData();
 	AutoSurface surface(this);
-	return view.LocationFromPosition(surface, *this, pos, topLine, vs, pe, rcClient);
+
+	Sci::Line lineDoc = pdoc->SciLineFromPosition(pos.Position());
+	Sci::Line lineVisible = pcs->DisplayFromDoc(lineDoc);
+
+	int linesPerCol = static_cast<int>(LinesOnScreen());
+	int c = 0;
+	if (linesPerCol > 0 && col > 1) {
+		c = static_cast<int>((lineVisible - topLine) / linesPerCol);
+		if (c < 0) c = 0;
+		if (c >= col) c = col - 1;
+	}
+
+	Sci::Line colTopLine = topLine + c * linesPerCol;
+
+	PRectangle rcCol = rcClient;
+	int width = static_cast<int>(GetClientRectangle().Width() / col);
+	if (col > 1) {
+		rcCol.left = rcClient.left + c * width;
+		rcCol.right = rcCol.left + width;
+	}
+
+	Point pt = view.LocationFromPosition(surface, *this, pos, colTopLine, vs, pe, rcCol);
+	if (col > 1) {
+		pt.x += c * width;
+	}
+	return pt;
 }
 
 Point Editor::LocationFromPosition(Sci::Position pos, PointEnd pe) {
@@ -375,7 +400,26 @@ SelectionPosition Editor::SPositionFromLocation(Point pt, bool canReturnInvalid,
 		if (pt.y < 0)
 			return SelectionPosition(Sci::invalidPosition);
 	}
-	const PointDocument ptdoc = DocumentPointFromView(pt);
+	int width = static_cast<int>(GetClientRectangle().Width() / col);
+	int c = 0;
+	if (col > 1 && width > 0) {
+		c = static_cast<int>(pt.x) / width;
+		if (c >= col) c = col - 1;
+		if (c < 0) c = 0;
+		pt.x -= c * width;
+	}
+
+	const Sci::Line colTopLine = topLine + c * LinesOnScreen();
+
+	PointDocument ptdoc(pt);
+	if (HasMarginWindow()) {
+		const Point ptOrigin2 = GetVisibleOriginInMain();
+		ptdoc.x += ptOrigin2.x;
+		ptdoc.y += ptOrigin2.y;
+	} else {
+		ptdoc.x += xOffset;
+		ptdoc.y += static_cast<double>(colTopLine * vs.lineHeight);
+	}
 	return view.SPositionFromLocation(surface, *this, ptdoc, canReturnInvalid,
 		charPosition, virtualSpace, vs, rcClient);
 }
@@ -403,7 +447,14 @@ Sci::Position Editor::PositionFromLineX(Sci::Line lineDoc, int x) {
 }
 
 Sci::Line Editor::LineFromLocation(Point pt) const noexcept {
-	return pcs->DocFromDisplay(static_cast<int>(pt.y) / vs.lineHeight + topLine);
+	int width = static_cast<int>(GetClientRectangle().Width() / col);
+	int c = 0;
+	if (col > 1 && width > 0) {
+		c = static_cast<int>(pt.x) / width;
+		if (c >= col) c = col - 1;
+	}
+	const Sci::Line colTopLine = topLine + c * LinesOnScreen();
+	return pcs->DocFromDisplay(static_cast<int>(pt.y) / vs.lineHeight + colTopLine);
 }
 
 void Editor::SetTopLine(Sci::Line topLineNew) {
@@ -533,6 +584,19 @@ PRectangle Editor::RectangleFromRange(Range r, int overlap) {
 	// Extend to right of prepared area if any to prevent artifacts from caret line highlight
 	rc.right = rcClientDrawing.right;
 	rc.bottom = static_cast<XYPOSITION>((maxLine - TopLineOfMain() + 1) * vs.lineHeight + overlap);
+
+	if (col > 1) {
+		const int linesPerCol = static_cast<int>(LinesOnScreen());
+		const int cMin = static_cast<int>((minLine - TopLineOfMain()) / linesPerCol);
+		const int cMax = static_cast<int>((maxLine - TopLineOfMain()) / linesPerCol);
+		if ((cMin == cMax) && (cMin >= 0) && (cMin < col)) {
+			// In one column so move to that column
+			const int width = static_cast<int>(rcClientDrawing.Width() / col);
+			rc.left += cMin * width;
+			rc.top -= cMin * linesPerCol * vs.lineHeight;
+			rc.bottom -= cMin * linesPerCol * vs.lineHeight;
+		}
+	}
 
 	return rc;
 }
@@ -1187,7 +1251,7 @@ Editor::XYScrollPosition Editor::XYScrollToMakeVisible(const SelectionRange &ran
 	if (FlagSet(options, XYScrollOptions::vertical) &&
 		(pt.y < rcClient.top || ptBottomCaret.y >= rcClient.bottom || FlagSet(policies.y.policy, CaretPolicy::Strict))) {
 		const Sci::Line lineCaret = DisplayFromPosition(range.caret.Position());
-		const Sci::Line linesOnScreen = LinesOnScreen();
+		const Sci::Line linesOnScreen = LinesOnScreen() * col;
 		const Sci::Line halfScreen = std::max(linesOnScreen - 1, static_cast<Sci::Line>(2)) / 2;
 		const bool bSlop = FlagSet(policies.y.policy, CaretPolicy::Slop);
 		const bool bStrict = FlagSet(policies.y.policy, CaretPolicy::Strict);
@@ -1809,7 +1873,7 @@ void Editor::LinesSplit(int pixelWidth) {
 	}
 }
 
-void Editor::PaintSelMargin(Surface *surfaceWindow, const PRectangle &rc) {
+void Editor::PaintSelMargin(Surface *surfaceWindow, const PRectangle &rc, const PRectangle &rcClient, Sci::Line colTopLine) {
 	if (vs.fixedColumnWidth == 0)
 		return;
 
@@ -1823,11 +1887,13 @@ void Editor::PaintSelMargin(Surface *surfaceWindow, const PRectangle &rc) {
 		return;
 	}
 
-	PRectangle rcMargin = GetClientRectangle();
-	const Point ptOrigin = GetVisibleOriginInMain();
-	rcMargin.Move(0, -ptOrigin.y);
-	rcMargin.left = 0;
-	rcMargin.right = static_cast<XYPOSITION>(vs.fixedColumnWidth);
+	PRectangle rcMargin = rcClient;
+	if (HasMarginWindow()) {
+		const Point ptOrigin = GetVisibleOriginInMain();
+		rcMargin.Move(0, -ptOrigin.y);
+	}
+	rcMargin.left = rcClient.left;
+	rcMargin.right = rcMargin.left + static_cast<XYPOSITION>(vs.fixedColumnWidth);
 
 	if (!rc.Intersects(rcMargin))
 		return;
@@ -1846,7 +1912,7 @@ void Editor::PaintSelMargin(Surface *surfaceWindow, const PRectangle &rc) {
 	if (rcMargin.top < rc.top)
 		rcMargin.top = rc.top;
 
-	marginView.PaintMargin(surface, topLine, rc, rcMargin, *this, vs);
+	marginView.PaintMargin(surface, colTopLine, rc, rcMargin, *this, vs);
 
 	if (view.bufferedDraw) {
 		marginView.pixmapSelMargin->FlushDrawing();
@@ -1910,19 +1976,69 @@ void Editor::Paint(Surface *surfaceWindow, PRectangle rcArea) {
 		surfaceWindow->SetClip(rcArea);
 
 	if (paintState != PaintState::abandoned) {
-		if (vs.marginInside) {
-			PaintSelMargin(surfaceWindow, rcArea);
-			PRectangle rcRightMargin = rcClient;
-			rcRightMargin.left = rcRightMargin.right - vs.rightMarginWidth;
-			if (rcArea.Intersects(rcRightMargin)) {
-				surfaceWindow->FillRectangle(rcRightMargin, vs.styles[StyleDefault].back);
+		if (col > 1) {
+			int width = static_cast<int>(rcClient.Width() / col);
+			for (int c = 0; c < col; c++) {
+				PRectangle rcCol = rcClient;
+				rcCol.left = rcClient.left + c * width;
+				if (c < col - 1)
+					rcCol.right = rcCol.left + width;
+				else
+					rcCol.right = rcClient.right;
+
+				Sci::Line colTopLine = topLine + c * LinesOnScreen();
+
+				if (vs.marginInside) {
+					PaintSelMargin(surfaceWindow, rcArea, rcCol, colTopLine);
+					PRectangle rcRightMargin = rcCol;
+					rcRightMargin.left = rcRightMargin.right - vs.rightMarginWidth;
+					if (rcArea.Intersects(rcRightMargin)) {
+						surfaceWindow->FillRectangle(rcRightMargin, vs.styles[StyleDefault].back);
+					}
+				} else { // Else separate view so separate paint event but leftMargin included to allow overlap
+					PRectangle rcLeftMargin = rcArea;
+					rcLeftMargin.left = 0;
+					rcLeftMargin.right = rcLeftMargin.left + vs.leftMarginWidth;
+					if (rcArea.Intersects(rcLeftMargin)) {
+						surfaceWindow->FillRectangle(rcLeftMargin, vs.styles[StyleDefault].back);
+					}
+				}
+
+				if (rcCol.Intersects(rcArea)) {
+					surfaceWindow->SetClip(rcCol);
+					// Clip vertical drawing to column height
+					PRectangle rcColArea = rcArea;
+					const XYPOSITION bottomLimit = rcCol.top + static_cast<int>(LinesOnScreen()) * vs.lineHeight;
+					if (rcColArea.bottom > bottomLimit)
+						rcColArea.bottom = bottomLimit;
+					view.PaintText(surfaceWindow, *this, vs, rcColArea, rcCol, colTopLine);
+
+					// Fill the gap at the bottom of the column if present
+					if (rcArea.bottom > bottomLimit) {
+						PRectangle rcGap = rcCol;
+						rcGap.top = bottomLimit;
+						rcGap.bottom = rcArea.bottom;
+						surfaceWindow->FillRectangle(rcGap, vs.styles[StyleDefault].back);
+					}
+
+					surfaceWindow->PopClip();
+				}
 			}
-		} else { // Else separate view so separate paint event but leftMargin included to allow overlap
-			PRectangle rcLeftMargin = rcArea;
-			rcLeftMargin.left = 0;
-			rcLeftMargin.right = rcLeftMargin.left + vs.leftMarginWidth;
-			if (rcArea.Intersects(rcLeftMargin)) {
-				surfaceWindow->FillRectangle(rcLeftMargin, vs.styles[StyleDefault].back);
+		} else {
+			if (vs.marginInside) {
+				PaintSelMargin(surfaceWindow, rcArea, rcClient, topLine);
+				PRectangle rcRightMargin = rcClient;
+				rcRightMargin.left = rcRightMargin.right - vs.rightMarginWidth;
+				if (rcArea.Intersects(rcRightMargin)) {
+					surfaceWindow->FillRectangle(rcRightMargin, vs.styles[StyleDefault].back);
+				}
+			} else { // Else separate view so separate paint event but leftMargin included to allow overlap
+				PRectangle rcLeftMargin = rcArea;
+				rcLeftMargin.left = 0;
+				rcLeftMargin.right = rcLeftMargin.left + vs.leftMarginWidth;
+				if (rcArea.Intersects(rcLeftMargin)) {
+					surfaceWindow->FillRectangle(rcLeftMargin, vs.styles[StyleDefault].back);
+				}
 			}
 		}
 	}
@@ -1943,7 +2059,8 @@ void Editor::Paint(Surface *surfaceWindow, PRectangle rcArea) {
 		return;
 	}
 
-	view.PaintText(surfaceWindow, *this, vs, rcArea, rcClient);
+	if (col <= 1)
+		view.PaintText(surfaceWindow, *this, vs, rcArea, rcClient);
 
 	if (horizontalScrollBarVisible && trackLineWidth && (view.lineWidthMaxSeen > scrollWidth)) {
 		scrollWidth = view.lineWidthMaxSeen;
@@ -6595,6 +6712,17 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 
 	case Message::GetXOffset:
 		return xOffset;
+
+	case Message::SetCol:
+		if (wParam > 0) {
+			col = static_cast<int>(wParam);
+			InvalidateStyleRedraw();
+			SetScrollBars();
+		}
+		break;
+
+	case Message::GetCol:
+		return col;
 
 	case Message::ChooseCaretX:
 		SetLastXChosen();

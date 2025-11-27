@@ -417,7 +417,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void LinesJoin();
 	void LinesSplit(int pixelWidth);
 
-	void PaintSelMargin(Surface *surfaceWindow, const PRectangle &rc);
+	void PaintSelMargin(Surface *surfaceWindow, const PRectangle &rc, const PRectangle &rcClient, Sci::Line topLine);
 	void RefreshPixMaps(Surface *surfaceWindow);
 	void Paint(Surface *surfaceWindow, PRectangle rcArea);
 	Sci::Position FormatRange(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);

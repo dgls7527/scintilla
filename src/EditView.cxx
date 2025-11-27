@@ -2479,7 +2479,7 @@ void EditView::DrawLine(Surface *surface, const EditModel &model, const ViewStyl
 }
 
 void EditView::PaintText(Surface *surfaceWindow, const EditModel &model, const ViewStyle &vsDraw,
-	PRectangle rcArea, PRectangle rcClient) {
+	PRectangle rcArea, PRectangle rcClient, std::optional<Sci::Line> topLine) {
 	// Allow text at start of line to overlap 1 pixel into the margin as this displays
 	// serifs and italic stems for aliased text.
 	const int leftTextOverlap = ((model.xOffset == 0) && (vsDraw.leftMarginWidth > 0)) ? 1 : 0;
@@ -2497,7 +2497,7 @@ void EditView::PaintText(Surface *surfaceWindow, const EditModel &model, const V
 		const Point ptOrigin = model.GetVisibleOriginInMain();
 
 		const int screenLinePaintFirst = static_cast<int>(rcArea.top) / vsDraw.lineHeight;
-		const int xStart = vsDraw.textStart - model.xOffset + static_cast<int>(ptOrigin.x);
+		const int xStart = vsDraw.textStart - model.xOffset + static_cast<int>(ptOrigin.x) + static_cast<int>(rcClient.left);
 
 		const SelectionPosition posCaret = model.posDrag.IsValid() ? model.posDrag : model.sel.RangeMain().caret;
 		const Sci::Line lineCaret = model.pdoc->SciLineFromPosition(posCaret.Position());
@@ -2539,7 +2539,7 @@ void EditView::PaintText(Surface *surfaceWindow, const EditModel &model, const V
 		for (;;) {
 			int yposScreen = screenLinePaintFirst * vsDraw.lineHeight;
 			int ypos = bufferedDraw ? 0 : yposScreen;
-			Sci::Line visibleLine = model.TopLineOfMain() + screenLinePaintFirst;
+			Sci::Line visibleLine = (topLine ? *topLine : model.TopLineOfMain()) + screenLinePaintFirst;
 			while (visibleLine < model.pcs->LinesDisplayed() && yposScreen < rcArea.bottom) {
 
 				const Sci::Line lineDoc = model.pcs->DocFromDisplay(visibleLine);
@@ -2641,7 +2641,8 @@ void EditView::PaintText(Surface *surfaceWindow, const EditModel &model, const V
 		PRectangle rcBeyondEOF = (vsDraw.marginInside) ? rcClient : rcArea;
 		rcBeyondEOF.left = static_cast<XYPOSITION>(vsDraw.textStart);
 		rcBeyondEOF.right = rcBeyondEOF.right - ((vsDraw.marginInside) ? vsDraw.rightMarginWidth : 0);
-		rcBeyondEOF.top = static_cast<XYPOSITION>((model.pcs->LinesDisplayed() - model.TopLineOfMain()) * vsDraw.lineHeight);
+		const Sci::Line topVisibleLine = topLine ? *topLine : model.TopLineOfMain();
+		rcBeyondEOF.top = static_cast<XYPOSITION>((model.pcs->LinesDisplayed() - topVisibleLine) * vsDraw.lineHeight);
 		if (rcBeyondEOF.top < rcBeyondEOF.bottom) {
 			surfaceWindow->FillRectangleAligned(rcBeyondEOF, Fill(vsDraw.styles[StyleDefault].back));
 			if (vsDraw.edgeState == EdgeVisualStyle::Line) {

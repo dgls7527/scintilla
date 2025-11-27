@@ -8,6 +8,8 @@
 #ifndef EDITVIEW_H
 #define EDITVIEW_H
 
+#include <optional>
+
 namespace Scintilla::Internal {
 
 struct PrintParameters {
@@ -154,7 +156,7 @@ private:
 
 public:
 	void PaintText(Surface *surfaceWindow, const EditModel &model, const ViewStyle &vsDraw,
-		PRectangle rcArea, PRectangle rcClient);
+		PRectangle rcArea, PRectangle rcClient, std::optional<Sci::Line> topLine = std::nullopt);
 	Sci::Position FormatRange(bool draw, CharacterRangeFull chrg, Rectangle rc, Surface *surface, Surface *surfaceMeasure,
 		const EditModel &model, const ViewStyle &vs);
 };

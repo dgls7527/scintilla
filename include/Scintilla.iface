@@ -3531,6 +3531,12 @@ evt void AutoCCompleted=2030(string text, int position, int ch, CompletionMethod
 evt void MarginRightClick=2031(int modifiers, int position, int margin)
 evt void AutoCSelectionChange=2032(int listType, string text, int position)
 
+# Set the number of columns.
+set void SetCol=4050(int col,)
+
+# Get the number of columns.
+get int GetCol=4051(,)
+
 cat Provisional
 
 enu Bidirectional=SC_BIDIRECTIONAL_
