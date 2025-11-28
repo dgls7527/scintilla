@@ -2748,7 +2748,14 @@ void Editor::NotifyIndicatorClick(bool click, Sci::Position position, KeyMod mod
 }
 
 bool Editor::NotifyMarginClick(Point pt, KeyMod modifiers) {
-	const int marginClicked = vs.MarginFromLocation(pt);
+	Point ptAdjusted = pt;
+	if (col > 1) {
+		int width = static_cast<int>(GetClientRectangle().Width() / col);
+		int c = static_cast<int>(pt.x) / width;
+		if (c >= col) c = col - 1;
+		ptAdjusted.x -= c * width;
+	}
+	const int marginClicked = vs.MarginFromLocation(ptAdjusted);
 	if ((marginClicked >= 0) && vs.ms[marginClicked].sensitive) {
 		const Sci::Position position = pdoc->LineStart(LineFromLocation(pt));
 		if ((vs.ms[marginClicked].mask & MaskFolders) && (FlagSet(foldAutomatic, AutomaticFold::Click))) {
@@ -4782,6 +4789,14 @@ bool Editor::PointInSelMargin(Point pt) const {
 		PRectangle rcSelMargin = GetClientRectangle();
 		rcSelMargin.right = static_cast<XYPOSITION>(vs.textStart - vs.leftMarginWidth);
 		rcSelMargin.left = static_cast<XYPOSITION>(vs.textStart - vs.fixedColumnWidth);
+
+		if (col > 1) {
+			int width = static_cast<int>(GetClientRectangle().Width() / col);
+			int c = static_cast<int>(pt.x) / width;
+			if (c >= col) c = col - 1;
+			rcSelMargin.Move(static_cast<XYPOSITION>(c * width), 0);
+		}
+
 		const Point ptOrigin = GetVisibleOriginInMain();
 		rcSelMargin.Move(0, -ptOrigin.y);
 		return rcSelMargin.ContainsWholePixel(pt);
@@ -5471,7 +5486,10 @@ Sci::Position Editor::PositionAfterArea(PRectangle rcArea) const {
 	// The start of the document line after the display line after the area
 	// This often means that the line after a modification is restyled which helps
 	// detect multiline comment additions and heals single line comments
-	const Sci::Line lineAfter = TopLineOfMain() + static_cast<Sci::Line>(rcArea.bottom - 1) / vs.lineHeight + 1;
+	Sci::Line lineAfter = TopLineOfMain() + static_cast<Sci::Line>(rcArea.bottom - 1) / vs.lineHeight + 1;
+	if (col > 1) {
+		lineAfter += (col - 1) * LinesOnScreen();
+	}
 	if (lineAfter < pcs->LinesDisplayed()) {
 		return pdoc->LineStart(pcs->DocFromDisplay(lineAfter) + 1);
 	}

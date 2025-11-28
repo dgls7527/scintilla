@@ -274,10 +274,10 @@ constexpr LineMarker::FoldPart PartForBar(bool markBefore, bool markAfter) {
 }
 
 void MarginView::PaintOneMargin(Surface *surface, PRectangle rc, PRectangle rcOneMargin, const MarginStyle &marginStyle,
-	const EditModel &model, const ViewStyle &vs) const {
+	const EditModel &model, const ViewStyle &vs, Sci::Line topLine) const {
 	const Point ptOrigin = model.GetVisibleOriginInMain();
 	const Sci::Line lineStartPaint = static_cast<Sci::Line>(rcOneMargin.top + ptOrigin.y) / vs.lineHeight;
-	Sci::Line visibleLine = model.TopLineOfMain() + lineStartPaint;
+	Sci::Line visibleLine = topLine + lineStartPaint;
 	XYPOSITION yposScreen = static_cast<XYPOSITION>(lineStartPaint * vs.lineHeight) - ptOrigin.y;
 	// Work out whether the top line is whitespace located after a
 	// lessening of fold level which implies a 'fold tail' but which should not
@@ -512,7 +512,7 @@ void MarginView::PaintMargin(Surface *surface, Sci::Line topLine, PRectangle rc,
 					model.pdoc->SciLineFromPosition(model.sel.MainCaret()), lastLine);
 			}
 
-			PaintOneMargin(surface, rc, rcOneMargin, marginStyle, model, vs);
+			PaintOneMargin(surface, rc, rcOneMargin, marginStyle, model, vs, topLine);
 		}
 	}
 
