@@ -97,7 +97,7 @@ void ModelState::TruncateUndo(int index) {
 EditModel::EditModel() : braces{} {
 	inOverstrike = false;
 	xOffset = 0;
-	col = 1;
+	col = 2;
 	trackLineWidth = false;
 	posDrag = SelectionPosition(Sci::invalidPosition);
 	braces[0] = Sci::invalidPosition;

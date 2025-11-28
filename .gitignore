@@ -9,9 +9,9 @@ bin/
 *.png
 __pycache__/
 *.pyc
-include/Scintilla.h
-include/ScintillaMessages.h
-include/ScintillaCall.h
-call/ScintillaCall.cxx
+#include/Scintilla.h
+#include/ScintillaMessages.h
+#include/ScintillaCall.h
+#call/ScintillaCall.cxx
 
 # End
