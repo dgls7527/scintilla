@@ -416,6 +416,7 @@ SelectionPosition Editor::SPositionFromLocation(Point pt, bool canReturnInvalid,
 		const Point ptOrigin2 = GetVisibleOriginInMain();
 		ptdoc.x += ptOrigin2.x;
 		ptdoc.y += ptOrigin2.y;
+		ptdoc.y += static_cast<double>((colTopLine - TopLineOfMain()) * vs.lineHeight);
 	} else {
 		ptdoc.x += xOffset;
 		ptdoc.y += static_cast<double>(colTopLine * vs.lineHeight);
@@ -3475,10 +3476,42 @@ SelectionPosition Editor::PositionUpOrDown(SelectionPosition spStart, int direct
 		}
 	}
 
-	const Sci::Line newY = static_cast<Sci::Line>(pt.y) + (1 + skipLines) * direction * vs.lineHeight;
+	Sci::Line newY = static_cast<Sci::Line>(pt.y) + (1 + skipLines) * direction * vs.lineHeight;
 	if (lastX < 0) {
 		lastX = static_cast<int>(pt.x) + xOffset;
 	}
+
+	if (col > 1) {
+		const PRectangle rcClient = GetTextRectangle();
+		const int width = static_cast<int>(rcClient.Width() / col);
+		const int height = static_cast<int>(LinesOnScreen() * vs.lineHeight);
+
+		if (width > 0 && height > 0) {
+			int c = static_cast<int>(pt.x) / width;
+			if (c >= col) c = col - 1;
+			if (c < 0) c = 0;
+
+			// Map lastX to current column to prevent jumping back to Col 0
+			lastX = c * width + (lastX % width);
+
+			if (direction > 0) {
+				if (newY >= height) {
+					if (c < col - 1) {
+						newY -= height;
+						lastX += width;
+					}
+				}
+			} else {
+				if (newY < 0) {
+					if (c > 0) {
+						newY += height;
+						lastX -= width;
+					}
+				}
+			}
+		}
+	}
+
 	SelectionPosition posNew = SPositionFromLocation(
 		Point::FromInts(lastX - xOffset, static_cast<int>(newY)), false, false, UserVirtualSpace());
 
